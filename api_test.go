@@ -28,4 +28,13 @@ func Test(t *testing.T) {
 	}
 	record := records[0]
 	t.Logf("Record: %+v", record)
+	recording, err := client.DownloadRecording(ctx, "badu1801461545239609344")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recording[0] == 0xFF && (recording[1]&0xE0) == 0xE0 {
+		t.Log("Recording is an MP3 file")
+	} else {
+		t.Error("Recording is not an MP3 file")
+	}
 }

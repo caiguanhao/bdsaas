@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
+	"strings"
 )
 
 const (
@@ -85,6 +87,15 @@ func (c Client) Query(ctx context.Context, sessionIds ...string) (callRecords []
 	return
 }
 
+// DownloadRecording downloads the recording of a call by session ID.
+func (c Client) DownloadRecording(ctx context.Context, sessionId string) (recording []byte, err error) {
+	err = request(ctx, "GET", "/bdsaas/call/phoneApi/downloadRecordingBySessionId.do", map[string]string{
+		"appKey":    c.appKey,
+		"sessionId": sessionId,
+	}, &recording)
+	return
+}
+
 type response struct {
 	Code    int             `json:"rspCode"`
 	Message string          `json:"rspMsg"`
@@ -122,21 +133,26 @@ func request(ctx context.Context, method, path string, reqBody interface{}, targ
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
-	var resp response
-	if err := json.Unmarshal(resBody, &resp); err != nil {
-		var body string
-		if len(resBody) > 1024 {
-			body = string(resBody)[:1024] + "..."
-		} else {
-			body = string(resBody)
+	contentType := res.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text") || strings.Contains(contentType, "json") {
+		var resp response
+		if err := json.Unmarshal(resBody, &resp); err != nil {
+			var body string
+			if len(resBody) > 1024 {
+				body = string(resBody)[:1024] + "..."
+			} else {
+				body = string(resBody)
+			}
+			return fmt.Errorf("failed to decode response body (%s): %w", body, err)
 		}
-		return fmt.Errorf("failed to decode response body (%s): %w", body, err)
-	}
-	if resp.Code != 0 {
-		return fmt.Errorf("bdsaas api error: %s", resp.Message)
-	}
-	if err := json.Unmarshal(resp.Data, target); err != nil {
-		return fmt.Errorf("failed to decode data: %w", err)
+		if resp.Code != 0 {
+			return fmt.Errorf("bdsaas api error: %s", resp.Message)
+		}
+		if err := json.Unmarshal(resp.Data, target); err != nil {
+			return fmt.Errorf("failed to decode data: %w", err)
+		}
+	} else {
+		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resBody))
 	}
 	return nil
 }
